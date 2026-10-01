@@ -61,12 +61,6 @@ print_lock = threading.Lock()
 
 logger = logging.getLogger(__name__)
 
-def log(msg):
-    with print_lock:
-        logger.info(msg)
-        # print(msg, flush=True)
-
-
 # --------------------------------------------------------------------------
 # Auth + API
 # --------------------------------------------------------------------------
@@ -289,7 +283,7 @@ def main():
 
     me = api.call("flickr.test.login")["user"]
     user_id = me["id"]
-    log(f"Logged in as {me['username']['_content']} ({user_id})")
+    logger.info(f"Logged in as {me['username']['_content']} ({user_id})")
 
     # ---- Collect albums --------------------------------------------------
     albums = []
@@ -301,7 +295,7 @@ def main():
         if page >= int(block["pages"]):
             break
         page += 1
-    log(f"Found {len(albums)} albums")
+    logger.info(f"Found {len(albums)} albums")
 
     used_dirs = set()
     # photo_id -> {"photo": dict, "dests": [Path, ...]}
@@ -340,7 +334,7 @@ def main():
                 "photo_count": count,
             }
         )
-        log(f"[{i}/{len(albums)}] {title}: {count} items")
+        logger.info(f"[{i}/{len(albums)}] {title}: {count} items")
 
     # ---- Photos not in any album ----------------------------------------
     if not args.skip_unsorted:
@@ -350,16 +344,16 @@ def main():
         for photo in api.paginate("flickr.photos.getNotInSet", "photos", extras=EXTRAS):
             add_to_plan(photo, folder)
             n += 1
-        log(f"{UNSORTED_NAME}: {n} items")
+        logger.info(f"{UNSORTED_NAME}: {n} items")
 
     (out / "_albums.json").write_text(json.dumps(albums_meta, indent=2, ensure_ascii=False))
 
     total = len(plan)
-    log(f"\n{total} unique photos/videos to process")
+    logger.info(f"\n{total} unique photos/videos to process")
     if args.dry_run:
         for e in plan.values():
             p = e["photo"]
-            log(f"  {p['id']}  {p.get('title', '')!r} -> {[d.name for d in e['dests']]}")
+            logger.info(f"  {p['id']}  {p.get('title', '')!r} -> {[d.name for d in e['dests']]}")
         return
 
     # ---- Download --------------------------------------------------------
@@ -387,18 +381,18 @@ def main():
             try:
                 fut.result()
                 if done["n"] % 25 == 0 or done["n"] == total:
-                    log(f"  {done['n']}/{total} done")
+                    logger.info(f"  {done['n']}/{total} done")
             except Exception as e:
                 failures.append((photo["id"], photo.get("title", ""), str(e)))
-                log(f"  FAILED {photo['id']} {photo.get('title', '')!r}: {e}")
+                logger.info(f"  FAILED {photo['id']} {photo.get('title', '')!r}: {e}")
 
     if failures:
         with open(out / "_failed.txt", "w", encoding="utf-8") as f:
             for pid, title, err in failures:
                 f.write(f"{pid}\t{title}\t{err}\n")
-        log(f"\nFinished with {len(failures)} failures (see _failed.txt). Re-run to retry them.")
+        logger.info(f"\nFinished with {len(failures)} failures (see _failed.txt). Re-run to retry them.")
     else:
-        log("\nAll done. 🎉")
+        logger.info("\nAll done. 🎉")
 
 
 if __name__ == "__main__":
