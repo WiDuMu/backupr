@@ -32,12 +32,14 @@ import shutil
 import sys
 import threading
 import time
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+from requests.sessions import Session
 from requests_oauthlib import OAuth1Session
 
 REST_URL = "https://api.flickr.com/services/rest/"
@@ -51,12 +53,18 @@ SIZE_KEYS = ["url_o", "url_k", "url_h", "url_b", "url_c", "url_z"]
 EXTRAS = ",".join(SIZE_KEYS + ["original_format", "media", "date_taken"])
 UNSORTED_NAME = "_Not in any album"
 
+CHUNK_SIZE = 1 << 16
+LOGGING_FILE = "flickr_backup.log"
+
 print_lock = threading.Lock()
 
 
+logger = logging.getLogger(__name__)
+
 def log(msg):
     with print_lock:
-        print(msg, flush=True)
+        logger.info(msg)
+        # print(msg, flush=True)
 
 
 # --------------------------------------------------------------------------
@@ -75,7 +83,7 @@ def authenticate(api_key, api_secret):
                     resource_owner_secret=data["oauth_token_secret"],
                 )
         except Exception:
-            pass
+            logger.error(f"Failed to load the oath token file, trying to generate a new one at \"{TOKEN_FILE}\".")
 
     oauth = OAuth1Session(api_key, client_secret=api_secret, callback_uri="oob")
     req = oauth.fetch_request_token(REQUEST_TOKEN_URL)
@@ -104,7 +112,7 @@ def authenticate(api_key, api_secret):
     try:
         os.chmod(TOKEN_FILE, 0o600)
     except OSError:
-        pass
+        logger.error(f"[WARNING]: Failed to set the token file permissions correctly at location {TOKEN_FILE}")
     return oauth
 
 
@@ -203,7 +211,7 @@ def resolve_media(api, photo):
     return url, ext, False
 
 
-def download_file(sess, url, dest: Path, mtime):
+def download_file(sess: Session, url, dest: Path, mtime):
     tmp = dest.with_name(dest.name + ".part")
     last = None
     for attempt in range(5):
@@ -211,8 +219,7 @@ def download_file(sess, url, dest: Path, mtime):
             with sess.get(url, stream=True, timeout=90) as r:
                 r.raise_for_status()
                 with open(tmp, "wb") as f:
-                    for chunk in r.iter_content(1 << 16):
-                        f.write(chunk)
+                    f.writelines(r.iter_content(CHUNK_SIZE))
             os.replace(tmp, dest)
             if mtime:
                 os.utime(dest, (mtime, mtime))
@@ -236,11 +243,26 @@ def link_or_copy(src: Path, dst: Path, mode):
             pass
     shutil.copy2(src, dst)
 
+# --------------------------------------------------------------------------
+# Logging setup
+# --------------------------------------------------------------------------
+
+def setup_logging():
+    file_handler = logging.FileHandler(LOGGING_FILE)
+    file_handler.setLevel(logging.DEBUG)
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
+    logger.addHandler(stderr_handler)
 
 # --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
 def main():
+    setup_logging()
+    logger.debug(f"{datetime.now(datetime.now().astimezone().tzinfo)} new session")
+
     ap = argparse.ArgumentParser(description="Download Flickr photos into album folders.")
     ap.add_argument("output", help="Destination folder")
     ap.add_argument("--key", default=os.getenv("FLICKR_API_KEY"), help="Flickr API key")
@@ -251,7 +273,7 @@ def main():
         "--duplicates",
         choices=["link", "copy"],
         default="link",
-        help="How to place photos that are in several albums (default: hard link, saves space)",
+        help="How to place photos that are in several albums (default: (hard) link, saves space)",
     )
     ap.add_argument("--dry-run", action="store_true", help="List what would be downloaded")
     args = ap.parse_args()

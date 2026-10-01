@@ -8,3 +8,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment variables
+.env
+
+# Backup folder
+flickr_backup/
+flickr_backup.log
