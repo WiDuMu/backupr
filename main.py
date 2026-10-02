@@ -547,6 +547,19 @@ def main():
         return
 
     # ---- Download --------------------------------------------------------
+
+    # Remove .parts files
+    # TODO: reuse the parts files?
+    # This may be possible but has verification requirements
+    for parts_file in out.rglob(".parts"):
+        if parts_file.is_file():
+            try:
+                parts_file.unlink()
+            except PermissionError:
+                logger.error(f"Failed to remove parts file {parts_file}: Permission denied")
+            except OSError as e:
+                logger.error(f"Failed to remove parts file {parts_file}: {e}")
+
     plain = requests.Session()
     done = {"n": 0}
     failures = []
