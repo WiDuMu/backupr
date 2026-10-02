@@ -60,6 +60,8 @@ SIZE_KEYS = ["url_o", "url_k", "url_h", "url_b", "url_c", "url_z"]
 EXTRAS = ",".join(SIZE_KEYS + ["original_format", "media", "date_taken"])
 UNSORTED_NAME = "_Not in any album"
 
+MAX_ATTEMPTS = 6
+MAX_REQUEST_TIMEOUT = 60
 CHUNK_SIZE = 1 << 16
 LOGGING_FILE = "flickr_backup.log"
 
@@ -70,12 +72,14 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------
 
 class FlickrError(Enum):
-    """Flickr API error codes I'm aware of.
+    """Flickr API error codes.
 
     AFAIK Flickr doesn't have a convienient reference of error codes, so for a comprehensive set one would have to go method by method in the documentation.
+    Some error codes also have multiple meanings depending on the call. These are only used on calls relevant to the script.
     """
     NOT_FOUND = 1
     MISSING_ARGUMENT = 2
+    NO_PARAMETERLESS_SEARCH = 3
     SSL_IS_REQUIRED = 95
     INVALID_SIGNATURE = 96
     MISSING_SIGNATURE = 97
@@ -90,6 +94,10 @@ class FlickrError(Enum):
     INVALID_XML_RPC_CALL = 115
     BAD_URL = 116
     RATE_LIMIT_EXCEEDED = 429
+
+# Errors that indicate that a request will not suceed even if they are retried
+FINAL_ERRORS = (FlickrError.NOT_FOUND, FlickrError.MISSING_ARGUMENT, FlickrError.NO_PARAMETERLESS_SEARCH, FlickrError.LOGIN_FAILED, FlickrError.NOT_LOGGED_IN_OR_INSUFFICIENT_PERMISSIONS, FlickrError.INVALID_API_KEY)
+
 
 # --------------------------------------------------------------------------
 # Flickr Response types
@@ -209,14 +217,16 @@ class FlickrAPI:
         """Call the given flickr api method with the specified parameters, will retry on failure."""
         params.update({"method": method, "format": "json", "nojsoncallback": 1})
         last_err = RuntimeError("Unknown API call error occurred")
-        for attempt in range(6):
+        for attempt in range(MAX_ATTEMPTS):
             with self._lock:  # gentle throttle (Flickr allows 3600 calls/hour)
                 wait = self.min_interval - (time.time() - self._last)
                 if wait > 0:
                     time.sleep(wait)
                 self._last = time.time()
             try:
-                r = self.session.get(REST_URL, params=params, timeout=60)
+                r = self.session.get(REST_URL, params=params, timeout=MAX_REQUEST_TIMEOUT)
+                if r.status_code < 500:
+                    last_err = RuntimeError(f"Permanent http error {r.status_code} encountered when requesting \"{r.url}\"")
                 r.raise_for_status()
                 data = r.json()
                 if data.get("stat") == "ok":
@@ -224,12 +234,13 @@ class FlickrAPI:
                 last_err = RuntimeError(
                     f"{method}: {data.get("message")} ({data.get("code")})"
                 )
-                if data.get("code") in (1, 2, 3, 98, 99, 100, 105):
+                if data.get("code") in FINAL_ERRORS:
                     last_err = FlickrAPIError(f"{method}: {data.get("message")}", data.get("code"))
                     break  # not retryable
             except Exception as e:
                 last_err = e
-            time.sleep(2**attempt)
+            if attempt > MAX_ATTEMPTS - 1:
+                time.sleep(2**attempt)
         raise last_err
 
     def paginate(self, method, container, **params):
