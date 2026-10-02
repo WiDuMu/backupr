@@ -23,7 +23,7 @@ Setup
    verifier code back. The token is cached in ~/.flickr_album_downloader.json
    (read-only permission).
 
-   DO NOT commit this file to version control.
+   DO NOT commit ~/.flickr_album_downloader.json to version control.
    If it does get published or commited, visit https://www.flickr.com/services/auth/list.gne
    immediately to revoke the token.
 """
@@ -93,6 +93,7 @@ class Photo(TypedDict):
     width_c: int
     width_z: int
 
+
 class Entry(TypedDict):
     photo: Photo
     dests: list[Path]
@@ -101,32 +102,7 @@ class Entry(TypedDict):
 # --------------------------------------------------------------------------
 # Auth + API
 # --------------------------------------------------------------------------
-def authenticate(api_key: str, api_secret: str):
-    """Return an OAuth1Session authorized for the user (cached after 1st run)."""
-    if TOKEN_FILE.exists():
-        try:
-            data = json.loads(TOKEN_FILE.read_text())
-            if data.get("api_key") == api_key:
-                return OAuth1Session(
-                    api_key,
-                    client_secret=api_secret,
-                    resource_owner_key=data["oauth_token"],
-                    resource_owner_secret=data["oauth_token_secret"],
-                )
-        except json.JSONDecodeError:
-            logger.error(
-                f'Failed to parse the oath token json file, trying to generate a new one at "{TOKEN_FILE}".'
-            )
-        except KeyError:
-            logger.error(
-                'Failed to find required key in oath json file. This should never happen, trying to generate a new one at "{TOKEN_FILE}".'
-            )
-
-        except Exception:
-            logger.error(
-                f'Failed to load the oath token file, trying to generate a new one at "{TOKEN_FILE}".'
-            )
-
+def request_new_oath_token(api_key: str, api_secret: str) -> OAuth1Session:
     oauth = OAuth1Session(api_key, client_secret=api_secret, callback_uri="oob")
     req = oauth.fetch_request_token(REQUEST_TOKEN_URL)
     url = oauth.authorization_url(AUTHORIZE_URL, perms="read")
@@ -159,6 +135,34 @@ def authenticate(api_key: str, api_secret: str):
         )
         sys.exit(f"Exiting due to unsafe credentials exposed at {TOKEN_FILE}")
     return oauth
+
+def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
+    """Return an OAuth1Session authorized for the user (cached after 1st run)."""
+    if TOKEN_FILE.exists():
+        try:
+            data = json.loads(TOKEN_FILE.read_text())
+            if data.get("api_key") == api_key:
+                return OAuth1Session(
+                    api_key,
+                    client_secret=api_secret,
+                    resource_owner_key=data["oauth_token"],
+                    resource_owner_secret=data["oauth_token_secret"],
+                )
+        except json.JSONDecodeError:
+            logger.error(
+                f'Failed to parse the oath token json file, trying to generate a new one at "{TOKEN_FILE}".'
+            )
+        except KeyError:
+            logger.error(
+                'Failed to find required key in oath json file. This should never happen, trying to generate a new one at "{TOKEN_FILE}".'
+            )
+
+        except Exception:
+            logger.error(
+                f'Failed to load the oath token file, trying to generate a new one at "{TOKEN_FILE}".'
+            )
+
+    return request_new_oath_token(api_key, api_secret)
 
 
 class FlickrAPI:
@@ -208,6 +212,14 @@ class FlickrAPI:
             if page >= int(block.get("pages", 1)):
                 break
             page += 1
+
+    def validate(self):
+        """Check if oath token is still valid"""
+        try:
+            result = self.call("flickr.auth.oauth.checkToken")
+            return result.get("stat") == "ok"
+        except Exception:
+            return False
 
 
 # --------------------------------------------------------------------------
@@ -291,7 +303,7 @@ def resolve_media(api: FlickrAPI, photo: Photo):
     return url, ext, False
 
 
-def download_file(sess: Session, url: str | bytes, dest: Path, mtime: float):
+def download_file(sess: Session, url: str | bytes, dest: Path, mtime: float | None):
     tmp = dest.with_name(dest.name + ".part")
     last = RuntimeError(f"Unknown error downloading file {url}")
     for attempt in range(5):
@@ -381,10 +393,22 @@ def main():
         sys.exit("Provide --key/--secret or set FLICKR_API_KEY / FLICKR_API_SECRET.")
 
     out = Path(args.output).expanduser()
-    out.mkdir(parents=True, exist_ok=True)
+
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        logger.error(f"Creating output directory: lacking permissions to create {out}.")
+        sys.exit(1)
+    except OSError as e:
+        logger.error(f"Creating output directory: '{out}': {e}")
+        sys.exit(1)
 
     session = authenticate(args.key, args.secret)
     api = FlickrAPI(session)
+
+    if not api.validate():
+        session = request_new_oath_token(args.key, args.secret)
+        api = FlickrAPI(session)
 
     me = api.call("flickr.test.login")["user"]
     user_id = me["id"]
@@ -424,37 +448,49 @@ def main():
     for i, album in enumerate(albums, 1):
         title = album["title"]["_content"]
         folder = album_dir(title, album["id"])
-        folder.mkdir(exist_ok=True)
-        count = 0
-        for photo in api.paginate(
-            "flickr.photosets.getPhotos",
-            "photoset",
-            photoset_id=album["id"],
-            user_id=user_id,
-            extras=EXTRAS,
-        ):
-            add_to_plan(photo, folder)
-            count += 1
-        albums_meta.append(
-            {
-                "id": album["id"],
-                "title": title,
-                "description": album.get("description", {}).get("_content", ""),
-                "folder": folder.name,
-                "photo_count": count,
-            }
-        )
-        logger.info(f"[{i}/{len(albums)}] {title}: {count} items")
+        try:
+            folder.mkdir(exist_ok=True)
+        except PermissionError:
+            logger.error(f"Failed to create album directory: permission error for {folder}")
+        except OSError as e:
+            logger.error(f"Failed to create album directory: {e}")
+        else:
+            count = 0
+            for photo in api.paginate(
+                "flickr.photosets.getPhotos",
+                "photoset",
+                photoset_id=album["id"],
+                user_id=user_id,
+                extras=EXTRAS,
+            ):
+                add_to_plan(photo, folder)
+                count += 1
+            albums_meta.append(
+                {
+                    "id": album["id"],
+                    "title": title,
+                    "description": album.get("description", {}).get("_content", ""),
+                    "folder": folder.name,
+                    "photo_count": count,
+                }
+            )
+            logger.info(f"[{i}/{len(albums)}] {title}: {count} items")
 
     # ---- Photos not in any album ----------------------------------------
     if not args.skip_unsorted:
         folder = out / UNSORTED_NAME
-        folder.mkdir(exist_ok=True)
-        n = 0
-        for photo in api.paginate("flickr.photos.getNotInSet", "photos", extras=EXTRAS):
-            add_to_plan(photo, folder)
-            n += 1
-        logger.info(f"{UNSORTED_NAME}: {n} items")
+        try:
+            folder.mkdir(exist_ok=True)
+        except PermissionError:
+            logger.error(f"Creating albumless photo directory: lacking permissions for {folder}")
+        except OSError as e:
+            logger.error(f"Creating albumless photo directory: {e}")
+        else:
+            n = 0
+            for photo in api.paginate("flickr.photos.getNotInSet", "photos", extras=EXTRAS):
+                add_to_plan(photo, folder)
+                n += 1
+            logger.info(f"{UNSORTED_NAME}: {n} items")
 
     (out / "_albums.json").write_text(
         json.dumps(albums_meta, indent=2, ensure_ascii=False)
@@ -482,9 +518,7 @@ def main():
         filename = make_filename(photo, ext)
         primary = folders[0] / filename
         if not (primary.exists() and primary.stat().st_size > 0):
-            mtime_parsed = parse_date(photo)
-            mtime = mtime_parsed if mtime_parsed is not None else 0 # Unix epoch
-            download_file(session if signed else plain, url, primary, mtime)
+            download_file(session if signed else plain, url, primary, parse_date(photo))
         for extra in folders[1:]:
             link_or_copy(primary, extra / filename, args.duplicates)
         return photo
