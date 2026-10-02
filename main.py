@@ -63,7 +63,7 @@ SIZE_KEYS = ["url_o", "url_k", "url_h", "url_b", "url_c", "url_z"]
 EXTRAS = ",".join(SIZE_KEYS + ["original_format", "media", "date_taken"])
 UNSORTED_NAME = "_Not in any album"
 
-MAX_ATTEMPTS = 6
+MAX_ATTEMPTS = 5
 MAX_REQUEST_TIMEOUT = 60
 CHUNK_SIZE = 1 << 16
 LOGGING_FILE = "flickr_backup.log"
@@ -98,7 +98,7 @@ class FlickrError(Enum):
     INVALID_SOAP_ENVELOPE = 114
     INVALID_XML_RPC_CALL = 115
     BAD_URL = 116
-    RATE_LIMIT_EXCEEDED = 429
+    # RATE_LIMIT_EXCEEDED = 429
 
 
 # Errors that indicate that a request will not suceed even if they are retried
@@ -254,7 +254,7 @@ class FlickrAPI:
         """Call the given flickr api method with the specified parameters, will retry on failure."""
         params.update({"method": method, "format": "json", "nojsoncallback": 1})
         last_err = RuntimeError("Unknown API call error occurred")
-        for attempt in range(MAX_ATTEMPTS):
+        for attempt in range(MAX_ATTEMPTS + 1):
             with self._lock:  # gentle throttle (Flickr allows 3600 calls/hour)
                 wait = self.min_interval - (time.time() - self._last)
                 if wait > 0:
@@ -264,8 +264,10 @@ class FlickrAPI:
                 r = self.session.get(
                     REST_URL, params=params, timeout=MAX_REQUEST_TIMEOUT
                 )
-                if r.status_code == 429:
+                if r.status_code == 429 and attempt < MAX_ATTEMPTS:
+                    last_err = FlickrError("Rate limit exceeded", r.status_code)
                     self.wait_retry_after(r)
+                    continue
                 elif r.status_code < 500:
                     last_err = RuntimeError(
                         f'Permanent http error {r.status_code} encountered when requesting "{r.url}"'
@@ -283,11 +285,9 @@ class FlickrAPI:
                         f"{method}: {data.get('message')}", code
                     )
                     break  # not retryable
-                if code == FlickrError.RATE_LIMIT_EXCEEDED:
-                    self.wait_retry_after(r)
             except Exception as e:
                 last_err = e
-            if attempt > MAX_ATTEMPTS - 1:
+            if attempt < MAX_ATTEMPTS:
                 time.sleep(2**attempt)
         raise last_err
 
@@ -385,7 +385,7 @@ def resolve_media(api: FlickrAPI, photo: Photo):
 def download_file(sess: Session, url: str, dest: Path, mtime: float | None):
     tmp = dest.with_name(dest.name + ".part")
     last = RuntimeError(f'Unknown error downloading file "{url}"')
-    for attempt in range(MAX_ATTEMPTS):
+    for attempt in range(MAX_ATTEMPTS + 1):
         try:
             with sess.get(url, stream=True, timeout=90) as r:
                 r.raise_for_status()
@@ -397,7 +397,7 @@ def download_file(sess: Session, url: str, dest: Path, mtime: float | None):
             return
         except Exception as e:
             last = e
-            if attempt < MAX_ATTEMPTS - 1: # Don't sleep after a final error.
+            if attempt < MAX_ATTEMPTS: # Don't sleep after a final error.
                 time.sleep(2**attempt)
     if tmp.exists():
         tmp.unlink()
