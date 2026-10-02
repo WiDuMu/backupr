@@ -68,6 +68,11 @@ logger = logging.getLogger(__name__)
 # Flickr Response types
 # --------------------------------------------------------------------------
 
+class FlickrAPIError(RuntimeError):
+    code: int
+    def __init__(self, message: str, code: int):
+        super().__init__(message)
+        self.code = code
 
 class Photo(TypedDict):
     datetaken: str
@@ -142,27 +147,23 @@ def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
         try:
             data = json.loads(TOKEN_FILE.read_text())
             if data.get("api_key") == api_key:
-                session = OAuth1Session(
+                return OAuth1Session(
                     api_key,
                     client_secret=api_secret,
                     resource_owner_key=data["oauth_token"],
                     resource_owner_secret=data["oauth_token_secret"],
                 )
-                if FlickrAPI(session).validate():
-                    return session
         except json.JSONDecodeError:
             logger.error(
-                f'Failed to parse the oath token json file, trying to generate a new one at "{TOKEN_FILE}".'
+                f"Failed to parse the oath token json file, trying to generate a new one at \"{TOKEN_FILE}\"."
             )
         except KeyError:
             logger.error(
-                'Failed to find required key in oath json file. This should never happen, trying to generate a new one at "{TOKEN_FILE}".'
+                "Failed to find required key in oath json file. This should never happen, trying to generate a new one at \"{TOKEN_FILE}\"."
             )
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Failed to validate stored key: {e}")
         except Exception:
             logger.error(
-                f'Failed to load the oath token file, trying to generate a new one at "{TOKEN_FILE}".'
+                f"Failed to load the oath token file, trying to generate a new one at \"{TOKEN_FILE}\"."
             )
 
     return request_new_oath_token(api_key, api_secret)
@@ -197,9 +198,10 @@ class FlickrAPI:
                 if data.get("stat") == "ok":
                     return data
                 last_err = RuntimeError(
-                    f"{method}: {data.get('message')} ({data.get('code')})"
+                    f"{method}: {data.get("message")} ({data.get("code")})"
                 )
                 if data.get("code") in (1, 2, 3, 98, 99, 100, 105):
+                    last_err = FlickrAPIError(f"{method}: {data.get("message")}", data.get("code"))
                     break  # not retryable
             except Exception as e:
                 last_err = e
@@ -215,11 +217,6 @@ class FlickrAPI:
             if page >= int(block.get("pages", 1)):
                 break
             page += 1
-
-    def validate(self):
-        """Check if oath token is still valid"""
-        result = self.call("flickr.auth.oauth.checkToken")
-        return result.get("stat") == "ok"
 
 
 # --------------------------------------------------------------------------
@@ -241,7 +238,7 @@ def best_url(photo):
 def make_filename(photo, ext: str):
     """Make a filename from the photo object from flickr"""
     title = sanitize(photo.get("title", ""), fallback="")
-    base = f"{title}_{photo['id']}" if title else photo["id"]
+    base = f"{title}_{photo["id"]}" if title else photo["id"]
     return f"{base}.{ext}"
 
 
@@ -253,10 +250,10 @@ def parse_date(photo: Photo):
             .timestamp()
         )
     except KeyError:
-        logger.error("Parsing date: missing key 'datetaken' in dict")
+        logger.error("Parsing date: missing key \"datetaken\" in dict")
         return None
     except ValueError:
-        logger.error(f"Parsing date: could not parse date from {photo['datetaken']}")
+        logger.error(f"Parsing date: could not parse date from {photo["datetaken"]}")
         return None
     except OSError:
         logger.error("Parsing date: operating system error occurred")
@@ -264,7 +261,6 @@ def parse_date(photo: Photo):
     except OverflowError:
         logger.error("Parsing date: overflow error occurred")
         return None
-    return None
 
 
 def resolve_media(api: FlickrAPI, photo: Photo):
@@ -303,7 +299,7 @@ def resolve_media(api: FlickrAPI, photo: Photo):
     return url, ext, False
 
 
-def download_file(sess: Session, url: str | bytes, dest: Path, mtime: float | None):
+def download_file(sess: Session, url: str, dest: Path, mtime: float | None):
     tmp = dest.with_name(dest.name + ".part")
     last = RuntimeError(f"Unknown error downloading file \"{url}\"")
     for attempt in range(5):
@@ -400,15 +396,24 @@ def main():
         logger.error(f"Creating output directory: lacking permissions to create {out}.")
         sys.exit(1)
     except OSError as e:
-        logger.error(f"Creating output directory: '{out}': {e}")
+        logger.error(f"Creating output directory: \"{out}\": {e}")
         sys.exit(1)
 
     session = authenticate(args.key, args.secret)
     api = FlickrAPI(session)
 
-    me = api.call("flickr.test.login")["user"]
+    try:
+        me = api.call("flickr.test.login")["user"]
+    except FlickrAPIError as e:
+        if e.code == 98:
+            logger.info("Failed to login with stored token, requesting another")
+            session = request_new_oath_token(args.key, args.secret)
+            api = FlickrAPI(session)
+            me = api.call("flickr.test.login")["user"]
+        else:
+            raise
     user_id = me["id"]
-    logger.info(f"Logged in as {me['username']['_content']} ({user_id})")
+    logger.info(f"Logged in as {me["username"]["_content"]} ({user_id})")
 
     # ---- Collect albums --------------------------------------------------
     albums = []
@@ -498,7 +503,7 @@ def main():
         for e in plan.values():
             p = e["photo"]
             logger.info(
-                f"  {p['id']}  {p.get('title', '')!r} -> {[d.name for d in e['dests']]}"
+                f"  {p["id"]}  {p.get("title", "")!r} -> {[d.name for d in e["dests"]]}"
             )
         return
 
@@ -527,10 +532,10 @@ def main():
             try:
                 fut.result()
                 if done["n"] % 25 == 0 or done["n"] == total:
-                    logger.info(f"  {done['n']}/{total} done")
+                    logger.info(f"  {done["n"]}/{total} done")
             except Exception as e:
                 failures.append((photo["id"], photo.get("title", ""), str(e)))
-                logger.info(f"  FAILED {photo['id']} {photo.get('title', '')!r}: {e}")
+                logger.info(f"  FAILED {photo["id"]} {photo.get("title", "")!r}: {e}")
 
     if failures:
         with open(out / "_failed.txt", "w", encoding="utf-8") as f:
