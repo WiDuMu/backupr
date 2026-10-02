@@ -367,7 +367,7 @@ def resolve_media(api: FlickrAPI, photo: Photo):
 def download_file(sess: Session, url: str, dest: Path, mtime: float | None):
     tmp = dest.with_name(dest.name + ".part")
     last = RuntimeError(f'Unknown error downloading file "{url}"')
-    for attempt in range(5):
+    for attempt in range(MAX_ATTEMPTS):
         try:
             with sess.get(url, stream=True, timeout=90) as r:
                 r.raise_for_status()
@@ -379,7 +379,8 @@ def download_file(sess: Session, url: str, dest: Path, mtime: float | None):
             return
         except Exception as e:
             last = e
-            time.sleep(2**attempt)
+            if attempt < MAX_ATTEMPTS - 1: # Don't sleep after a final error.
+                time.sleep(2**attempt)
     if tmp.exists():
         tmp.unlink()
     raise last
