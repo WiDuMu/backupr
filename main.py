@@ -43,7 +43,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TypedDict
+from typing import TypedDict, NotRequired
 from urllib.parse import urlparse
 
 import requests
@@ -110,13 +110,13 @@ class FlickrAPIError(RuntimeError):
         super().__init__(message)
         self.code = code
 
-class Photo(TypedDict, total=False):
+class Photo(TypedDict):
     datetaken: str
     datetakengranularity: int
-    datetakenunknown: int | str
+    datetakenunknown: str
     farm: int
-    height_c: int
-    height_z: int
+    height_c: NotRequired[int]
+    height_z: NotRequired[int]
     id: str
     isfamily: int
     isprimary: str
@@ -128,11 +128,11 @@ class Photo(TypedDict, total=False):
     secret: str
     server: str
     title: str
-    upgrade_sizes: list[str]
-    url_c: str
-    url_z: str
-    width_c: int
-    width_z: int
+    upgrade_sizes: NotRequired[list[str]]
+    url_c: NotRequired[str]
+    url_z: NotRequired[str]
+    width_c: NotRequired[int]
+    width_z: NotRequired[int]
 
 
 class Entry(TypedDict):
