@@ -81,7 +81,7 @@ thread_local = threading.local()
 class FlickrError(IntEnum):
     """Flickr API error codes.
 
-    AFAIK Flickr doesn't have a convienient reference of error codes, so for a comprehensive set one would have to go method by method in the documentation.
+    AFAIK Flickr doesn't have a convenient reference of error codes, so for a comprehensive set one would have to go method by method in the documentation.
     Some error codes also have multiple meanings depending on the call. These are only used on calls relevant to the script.
     """
 
@@ -160,7 +160,7 @@ class Entry(TypedDict):
 # --------------------------------------------------------------------------
 # Auth + API
 # --------------------------------------------------------------------------
-def request_new_oath_token(api_key: str, api_secret: str) -> OAuth1Session:
+def request_new_oauth_token(api_key: str, api_secret: str) -> OAuth1Session:
     oauth = OAuth1Session(api_key, client_secret=api_secret, callback_uri="oob")
     req = oauth.fetch_request_token(REQUEST_TOKEN_URL)
     url = oauth.authorization_url(AUTHORIZE_URL, perms="read")
@@ -215,7 +215,7 @@ def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
             )
         except KeyError:
             logger.warning(
-                "Failed to find required key in oath json file. This should never happen, trying to generate a new one..."
+                "Failed to find required key in oauth json file. This should never happen, trying to generate a new one..."
             )
         except PermissionError:
             logger.warning(
@@ -228,7 +228,7 @@ def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
         except UnicodeDecodeError:
             logger.warning("Stored token file is not valid unicode. Attempting to generate a new one...")
 
-    return request_new_oath_token(api_key, api_secret)
+    return request_new_oauth_token(api_key, api_secret)
 
 
 class FlickrAPI:
@@ -507,7 +507,7 @@ def main():
     except FlickrAPIError as e:
         if e.code == FlickrError.LOGIN_FAILED:
             logger.info("Failed to login with stored token, requesting another")
-            session = request_new_oath_token(args.key, args.secret)
+            session = request_new_oauth_token(args.key, args.secret)
             api = FlickrAPI(session)
             me = api.call("flickr.test.login")["user"]
         else:
