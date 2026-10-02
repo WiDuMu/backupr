@@ -373,8 +373,8 @@ def link_or_copy(src: Path, dst: Path, mode: str):
 # --------------------------------------------------------------------------
 
 
-def setup_logging():
-    file_handler = logging.FileHandler(LOGGING_FILE)
+def setup_logging(file_location: str | Path):
+    file_handler = logging.FileHandler(file_location)
     file_handler.setLevel(logging.DEBUG)
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setLevel(logging.INFO)
@@ -387,9 +387,6 @@ def setup_logging():
 # Main
 # --------------------------------------------------------------------------
 def main():
-    setup_logging()
-    logger.debug(f"{datetime.now(datetime.now().astimezone().tzinfo)} new session")
-
     ap = argparse.ArgumentParser(
         description="Download Flickr photos into album folders."
     )
@@ -419,7 +416,13 @@ def main():
     ap.add_argument(
         "--dry-run", action="store_true", help="List what would be downloaded"
     )
+    ap.add_argument(
+        "--log-location", default=LOGGING_FILE, help=f"File to log to (default: ./{LOGGING_FILE})"
+    )
     args = ap.parse_args()
+
+    setup_logging(args.log_location)
+    logger.debug(f"{datetime.now(datetime.now().astimezone().tzinfo)} new session")
 
     if not args.key or not args.secret:
         sys.exit("Provide --key/--secret or set FLICKR_API_KEY / FLICKR_API_SECRET.")
