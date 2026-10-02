@@ -41,7 +41,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import List, NotRequired, TypedDict
+from typing import TypedDict
 from urllib.parse import urlparse
 
 import requests
@@ -92,6 +92,10 @@ class Photo(TypedDict):
     url_z: str
     width_c: int
     width_z: int
+
+class Entry(TypedDict):
+    photo: Photo
+    dests: list[Path]
 
 
 # --------------------------------------------------------------------------
@@ -200,8 +204,7 @@ class FlickrAPI:
         while True:
             data = self.call(method, page=page, per_page=500, **params)
             block = data[container]
-            for p in block.get("photo", []):
-                yield p
+            yield from block.get("photo", [])
             if page >= int(block.get("pages", 1)):
                 break
             page += 1
@@ -230,7 +233,7 @@ def make_filename(photo, ext: str):
     return f"{base}.{ext}"
 
 
-def parse_date(photo: dict[str, str]):
+def parse_date(photo: Photo):
     try:
         return (
             datetime.strptime(photo["datetaken"], "%Y-%m-%d %H:%M:%S")
@@ -252,7 +255,7 @@ def parse_date(photo: dict[str, str]):
     return None
 
 
-def resolve_media(api, photo):
+def resolve_media(api: FlickrAPI, photo: Photo):
     """Return (url, ext, signed) for a photo or video."""
     if photo.get("media") == "video":
         sizes = api.call("flickr.photos.getSizes", photo_id=photo["id"])["sizes"][
@@ -288,7 +291,7 @@ def resolve_media(api, photo):
     return url, ext, False
 
 
-def download_file(sess: Session, url: str | bytes, dest: Path, mtime: int | float):
+def download_file(sess: Session, url: str | bytes, dest: Path, mtime: float):
     tmp = dest.with_name(dest.name + ".part")
     last = RuntimeError(f"Unknown error downloading file {url}")
     for attempt in range(5):
@@ -406,14 +409,14 @@ def main():
     plan = {}
     albums_meta = []
 
-    def album_dir(title, aid):
+    def album_dir(title: str, aid: str | int):
         name = sanitize(title, fallback=f"album_{aid}")
         if name.lower() in used_dirs:
             name = f"{name}_{aid}"
         used_dirs.add(name.lower())
         return out / name
 
-    def add_to_plan(photo, folder):
+    def add_to_plan(photo: Photo, folder: Path):
         entry = plan.setdefault(photo["id"], {"photo": photo, "dests": []})
         if folder not in [d.parent for d in entry["dests"]]:
             entry["dests"].append(folder)  # store folder; filename decided later
@@ -472,14 +475,16 @@ def main():
     done = {"n": 0}
     failures = []
 
-    def work(entry):
+    def work(entry: Entry):
         photo = entry["photo"]
         folders = entry["dests"]
         url, ext, signed = resolve_media(api, photo)
         filename = make_filename(photo, ext)
         primary = folders[0] / filename
         if not (primary.exists() and primary.stat().st_size > 0):
-            download_file(session if signed else plain, url, primary, parse_date(photo))
+            mtime_parsed = parse_date(photo)
+            mtime = mtime_parsed if mtime_parsed is not None else 0 # Unix epoch
+            download_file(session if signed else plain, url, primary, mtime)
         for extra in folders[1:]:
             link_or_copy(primary, extra / filename, args.duplicates)
         return photo
