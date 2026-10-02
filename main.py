@@ -29,15 +29,15 @@ Setup
 """
 
 import argparse
-import json
 import getpass
+import json
+import logging
 import os
 import re
 import shutil
 import sys
 import threading
 import time
-import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -63,6 +63,7 @@ LOGGING_FILE = "flickr_backup.log"
 
 logger = logging.getLogger(__name__)
 
+
 # --------------------------------------------------------------------------
 # Auth + API
 # --------------------------------------------------------------------------
@@ -79,13 +80,18 @@ def authenticate(api_key: str, api_secret: str):
                     resource_owner_secret=data["oauth_token_secret"],
                 )
         except json.JSONDecoder:
-            logger.error(f"Failed to parse the oath token json file, trying to generate a new one at \"{TOKEN_FILE}\".")
+            logger.error(
+                f'Failed to parse the oath token json file, trying to generate a new one at "{TOKEN_FILE}".'
+            )
         except KeyError:
-            logger.error("Failed to find required key in oath json file. This should never happen, trying to generate a new one at \"{TOKEN_FILE}\".")
-
+            logger.error(
+                'Failed to find required key in oath json file. This should never happen, trying to generate a new one at "{TOKEN_FILE}".'
+            )
 
         except Exception:
-            logger.error(f"Failed to load the oath token file, trying to generate a new one at \"{TOKEN_FILE}\".")
+            logger.error(
+                f'Failed to load the oath token file, trying to generate a new one at "{TOKEN_FILE}".'
+            )
 
     oauth = OAuth1Session(api_key, client_secret=api_secret, callback_uri="oob")
     req = oauth.fetch_request_token(REQUEST_TOKEN_URL)
@@ -114,7 +120,9 @@ def authenticate(api_key: str, api_secret: str):
     try:
         os.chmod(TOKEN_FILE, 0o600)
     except OSError:
-        logger.error(f"Failed to set the token file permissions correctly at location {TOKEN_FILE}")
+        logger.error(
+            f"Failed to set the token file permissions correctly at location {TOKEN_FILE}"
+        )
         sys.exit(f"Exiting due to unsafe credentials exposed at {TOKEN_FILE}")
     return oauth
 
@@ -132,8 +140,7 @@ class FlickrAPI:
         self._last = 0.0
 
     def call(self, method: str, **params):
-        """ Call the given flickr api method with the specified parameters, will retry on failure.
-        """
+        """Call the given flickr api method with the specified parameters, will retry on failure."""
         params.update({"method": method, "format": "json", "nojsoncallback": 1})
         last_err = RuntimeError("Unknown API call error occurred")
         for attempt in range(6):
@@ -148,12 +155,14 @@ class FlickrAPI:
                 data = r.json()
                 if data.get("stat") == "ok":
                     return data
-                last_err = RuntimeError(f"{method}: {data.get('message')} ({data.get('code')})")
+                last_err = RuntimeError(
+                    f"{method}: {data.get('message')} ({data.get('code')})"
+                )
                 if data.get("code") in (1, 2, 3, 98, 99, 100, 105):
                     break  # not retryable
             except Exception as e:
                 last_err = e
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
         raise last_err
 
     def paginate(self, method, container, **params):
@@ -172,8 +181,7 @@ class FlickrAPI:
 # Helpers
 # --------------------------------------------------------------------------
 def sanitize(name: str, fallback: str = "untitled", max_len: int = 80):
-    """ Sanitize a filename of disallowed characters
-    """
+    """Sanitize a filename of disallowed characters"""
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name or "").strip(" .")
     return (name[:max_len].strip(" .")) or fallback
 
@@ -186,8 +194,7 @@ def best_url(photo):
 
 
 def make_filename(photo, ext: str):
-    """ Make a filename from the photo object from flickr
-    """
+    """Make a filename from the photo object from flickr"""
     title = sanitize(photo.get("title", ""), fallback="")
     base = f"{title}_{photo['id']}" if title else photo["id"]
     return f"{base}.{ext}"
@@ -195,12 +202,16 @@ def make_filename(photo, ext: str):
 
 def parse_date(photo: dict[str, str]):
     try:
-        return datetime.strptime(photo["datetaken"], "%Y-%m-%d %H:%M:%S").astimezone().timestamp()
+        return (
+            datetime.strptime(photo["datetaken"], "%Y-%m-%d %H:%M:%S")
+            .astimezone()
+            .timestamp()
+        )
     except KeyError:
         logger.error("Parsing date: missing key 'datetaken' in dict")
         return None
     except ValueError:
-        logger.error(f"Parsing date: could not parse date from {photo["datetaken"]}")
+        logger.error(f"Parsing date: could not parse date from {photo['datetaken']}")
         return None
     except OSError:
         logger.error("Parsing date: operating system error occurred")
@@ -214,9 +225,18 @@ def parse_date(photo: dict[str, str]):
 def resolve_media(api, photo):
     """Return (url, ext, signed) for a photo or video."""
     if photo.get("media") == "video":
-        sizes = api.call("flickr.photos.getSizes", photo_id=photo["id"])["sizes"]["size"]
+        sizes = api.call("flickr.photos.getSizes", photo_id=photo["id"])["sizes"][
+            "size"
+        ]
         by_label = {s["label"]: s for s in sizes}
-        for label in ("Video Original", "1080p", "720p", "HD MP4", "Site MP4", "Mobile MP4"):
+        for label in (
+            "Video Original",
+            "1080p",
+            "720p",
+            "HD MP4",
+            "Site MP4",
+            "Mobile MP4",
+        ):
             if label in by_label:
                 ext = "mp4"
                 if label == "Video Original" and photo.get("originalformat"):
@@ -227,7 +247,9 @@ def resolve_media(api, photo):
     url = best_url(photo)
     if not url:
         # Fall back to getSizes
-        sizes = api.call("flickr.photos.getSizes", photo_id=photo["id"])["sizes"]["size"]
+        sizes = api.call("flickr.photos.getSizes", photo_id=photo["id"])["sizes"][
+            "size"
+        ]
         sizes = [s for s in sizes if s.get("media") == "photo"]
         if not sizes:
             raise RuntimeError("no downloadable size")
@@ -251,7 +273,7 @@ def download_file(sess: Session, url: str | bytes, dest: Path, mtime: int | floa
             return
         except Exception as e:
             last = e
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
     if tmp.exists():
         tmp.unlink()
     raise last
@@ -268,9 +290,11 @@ def link_or_copy(src: Path, dst: Path, mode):
             pass
     shutil.copy2(src, dst)
 
+
 # --------------------------------------------------------------------------
 # Logging setup
 # --------------------------------------------------------------------------
+
 
 def setup_logging():
     file_handler = logging.FileHandler(LOGGING_FILE)
@@ -281,6 +305,7 @@ def setup_logging():
     logger.addHandler(file_handler)
     logger.addHandler(stderr_handler)
 
+
 # --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
@@ -288,19 +313,35 @@ def main():
     setup_logging()
     logger.debug(f"{datetime.now(datetime.now().astimezone().tzinfo)} new session")
 
-    ap = argparse.ArgumentParser(description="Download Flickr photos into album folders.")
+    ap = argparse.ArgumentParser(
+        description="Download Flickr photos into album folders."
+    )
     ap.add_argument("output", help="Destination folder")
-    ap.add_argument("--key", default=os.getenv("FLICKR_API_KEY"), help="Flickr API key. This option should in general not be used to avoid exposing the key.")
-    ap.add_argument("--secret", default=os.getenv("FLICKR_API_SECRET"), help="Flickr API secret. This option should in general not be used to avoid exposing the secret.")
-    ap.add_argument("--workers", type=int, default=4, help="Parallel downloads (default 4)")
-    ap.add_argument("--skip-unsorted", action="store_true", help="Skip photos not in any album")
+    ap.add_argument(
+        "--key",
+        default=os.getenv("FLICKR_API_KEY"),
+        help="Flickr API key. This option should in general not be used to avoid exposing the key.",
+    )
+    ap.add_argument(
+        "--secret",
+        default=os.getenv("FLICKR_API_SECRET"),
+        help="Flickr API secret. This option should in general not be used to avoid exposing the secret.",
+    )
+    ap.add_argument(
+        "--workers", type=int, default=4, help="Parallel downloads (default 4)"
+    )
+    ap.add_argument(
+        "--skip-unsorted", action="store_true", help="Skip photos not in any album"
+    )
     ap.add_argument(
         "--duplicates",
         choices=["link", "copy"],
         default="link",
         help="How to place photos that are in several albums (default: (hard) link, saves space)",
     )
-    ap.add_argument("--dry-run", action="store_true", help="List what would be downloaded")
+    ap.add_argument(
+        "--dry-run", action="store_true", help="List what would be downloaded"
+    )
     args = ap.parse_args()
 
     if not args.key or not args.secret:
@@ -320,7 +361,9 @@ def main():
     albums = []
     page = 1
     while True:
-        data = api.call("flickr.photosets.getList", user_id=user_id, page=page, per_page=500)
+        data = api.call(
+            "flickr.photosets.getList", user_id=user_id, page=page, per_page=500
+        )
         block = data["photosets"]
         albums.extend(block["photoset"])
         if page >= int(block["pages"]):
@@ -351,8 +394,11 @@ def main():
         folder.mkdir(exist_ok=True)
         count = 0
         for photo in api.paginate(
-            "flickr.photosets.getPhotos", "photoset",
-            photoset_id=album["id"], user_id=user_id, extras=EXTRAS,
+            "flickr.photosets.getPhotos",
+            "photoset",
+            photoset_id=album["id"],
+            user_id=user_id,
+            extras=EXTRAS,
         ):
             add_to_plan(photo, folder)
             count += 1
@@ -377,14 +423,18 @@ def main():
             n += 1
         logger.info(f"{UNSORTED_NAME}: {n} items")
 
-    (out / "_albums.json").write_text(json.dumps(albums_meta, indent=2, ensure_ascii=False))
+    (out / "_albums.json").write_text(
+        json.dumps(albums_meta, indent=2, ensure_ascii=False)
+    )
 
     total = len(plan)
     logger.info(f"\n{total} unique photos/videos to process")
     if args.dry_run:
         for e in plan.values():
             p = e["photo"]
-            logger.info(f"  {p['id']}  {p.get('title', '')!r} -> {[d.name for d in e['dests']]}")
+            logger.info(
+                f"  {p['id']}  {p.get('title', '')!r} -> {[d.name for d in e['dests']]}"
+            )
         return
 
     # ---- Download --------------------------------------------------------
@@ -421,7 +471,9 @@ def main():
         with open(out / "_failed.txt", "w", encoding="utf-8") as f:
             for pid, title, err in failures:
                 f.write(f"{pid}\t{title}\t{err}\n")
-        logger.info(f"\nFinished with {len(failures)} failures (see _failed.txt). Re-run to retry them.")
+        logger.info(
+            f"\nFinished with {len(failures)} failures (see _failed.txt). Re-run to retry them."
+        )
     else:
         logger.info("\nAll done. 🎉")
 
