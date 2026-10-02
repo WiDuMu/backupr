@@ -336,7 +336,7 @@ def download_file(sess: Session, url: str, dest: Path, mtime: float | None):
                 with open(tmp, "wb") as f:
                     f.writelines(r.iter_content(CHUNK_SIZE))
             os.replace(tmp, dest)
-            if mtime:
+            if mtime is not None:
                 os.utime(dest, (mtime, mtime))
             return
         except Exception as e:
@@ -347,7 +347,7 @@ def download_file(sess: Session, url: str, dest: Path, mtime: float | None):
     raise last
 
 
-def link_or_copy(src: Path, dst: Path, mode):
+def link_or_copy(src: Path, dst: Path, mode: str):
     if dst.exists():
         return
     if mode == "link":
