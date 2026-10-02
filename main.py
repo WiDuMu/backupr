@@ -221,6 +221,8 @@ def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
             logger.warning(
                 f"Failed to read stored token file: {e}. Attempting to generate a new one..."
             )
+        except UnicodeEncodeError:
+            logger.warning("Stored token file is not valid unicode. Attempting to generate a new one...")
 
     return request_new_oath_token(api_key, api_secret)
 
