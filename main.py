@@ -43,7 +43,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from enum import Enum
+from enum import IntEnum
 from pathlib import Path
 from typing import NotRequired, TypedDict
 from urllib.parse import urlparse
@@ -75,7 +75,7 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------
 
 
-class FlickrError(Enum):
+class FlickrError(IntEnum):
     """Flickr API error codes.
 
     AFAIK Flickr doesn't have a convienient reference of error codes, so for a comprehensive set one would have to go method by method in the documentation.
@@ -280,7 +280,7 @@ class FlickrAPI:
                     f"{method}: {data.get('message')} ({data.get('code')})"
                 )
                 code = data.get("code")
-                if code in FINAL_ERRORS:
+                if int(code) in FINAL_ERRORS:
                     last_err = FlickrAPIError(
                         f"{method}: {data.get('message')}", code
                     )
@@ -618,7 +618,6 @@ def main():
                 )
             except OSError as e:
                 logger.error(f"Failed to remove parts file {parts_file}: {e}")
-
     plain = requests.Session()
     done = {"n": 0}
     failures = []
