@@ -179,7 +179,8 @@ def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
     if TOKEN_FILE.exists():
         try:
             data = json.loads(TOKEN_FILE.read_text())
-            if data.get("api_key") == api_key:
+            # Use this instead of .get() to avoid the None case (an error) being silently ignored.
+            if data["api_key"] == api_key:
                 return OAuth1Session(
                     api_key,
                     client_secret=api_secret,
@@ -187,17 +188,17 @@ def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
                     resource_owner_secret=data["oauth_token_secret"],
                 )
         except json.JSONDecodeError:
-            logger.error(
-                f"Failed to parse the oath token json file, trying to generate a new one at \"{TOKEN_FILE}\"."
+            logger.warning(
+                "Failed to parse the oauth token json file, trying to generate a new one..."
             )
         except KeyError:
-            logger.error(
-                "Failed to find required key in oath json file. This should never happen, trying to generate a new one at \"{TOKEN_FILE}\"."
+            logger.warning(
+                "Failed to find required key in oath json file. This should never happen, trying to generate a new one..."
             )
-        except Exception:
-            logger.error(
-                f"Failed to load the oath token file, trying to generate a new one at \"{TOKEN_FILE}\"."
-            )
+        except PermissionError:
+            logger.warning("Failed to read stored token file: permission denied. Attempting to generate a new one...")
+        except OSError as e:
+            logger.warning(f"Failed to read stored token file: {e}. Attempting to generate a new one...")
 
     return request_new_oath_token(api_key, api_secret)
 
