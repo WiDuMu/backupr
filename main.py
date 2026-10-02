@@ -43,7 +43,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TypedDict, NotRequired
+from typing import NotRequired, TypedDict
 from urllib.parse import urlparse
 
 import requests
@@ -72,12 +72,14 @@ logger = logging.getLogger(__name__)
 # Flickr Error Codes
 # --------------------------------------------------------------------------
 
+
 class FlickrError(Enum):
     """Flickr API error codes.
 
     AFAIK Flickr doesn't have a convienient reference of error codes, so for a comprehensive set one would have to go method by method in the documentation.
     Some error codes also have multiple meanings depending on the call. These are only used on calls relevant to the script.
     """
+
     NOT_FOUND = 1
     MISSING_ARGUMENT = 2
     NO_PARAMETERLESS_SEARCH = 3
@@ -96,19 +98,30 @@ class FlickrError(Enum):
     BAD_URL = 116
     RATE_LIMIT_EXCEEDED = 429
 
+
 # Errors that indicate that a request will not suceed even if they are retried
-FINAL_ERRORS = (FlickrError.NOT_FOUND, FlickrError.MISSING_ARGUMENT, FlickrError.NO_PARAMETERLESS_SEARCH, FlickrError.LOGIN_FAILED, FlickrError.NOT_LOGGED_IN_OR_INSUFFICIENT_PERMISSIONS, FlickrError.INVALID_API_KEY)
+FINAL_ERRORS = (
+    FlickrError.NOT_FOUND,
+    FlickrError.MISSING_ARGUMENT,
+    FlickrError.NO_PARAMETERLESS_SEARCH,
+    FlickrError.LOGIN_FAILED,
+    FlickrError.NOT_LOGGED_IN_OR_INSUFFICIENT_PERMISSIONS,
+    FlickrError.INVALID_API_KEY,
+)
 
 
 # --------------------------------------------------------------------------
 # Flickr Response types
 # --------------------------------------------------------------------------
 
+
 class FlickrAPIError(RuntimeError):
     code: int
+
     def __init__(self, message: str, code: int):
         super().__init__(message)
         self.code = code
+
 
 class Photo(TypedDict):
     datetaken: str
@@ -164,15 +177,20 @@ def request_new_oath_token(api_key: str, api_secret: str) -> OAuth1Session:
         # Open the file with the right permissions from the start
         file = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(file, "w") as f:
-            f.write(json.dumps({
-                "api_key": api_key,
-                "oauth_token": tok["oauth_token"],
-                "oauth_token_secret": tok["oauth_token_secret"],
-            }))
+            f.write(
+                json.dumps(
+                    {
+                        "api_key": api_key,
+                        "oauth_token": tok["oauth_token"],
+                        "oauth_token_secret": tok["oauth_token_secret"],
+                    }
+                )
+            )
     except OSError as e:
-        logger.warning(f"Failed to save token file at \"{TOKEN_FILE}\".")
+        logger.warning(f'Failed to save token file at "{TOKEN_FILE}".')
         logger.warning("Will need to reauthenticate next run!")
     return oauth
+
 
 def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
     """Return an OAuth1Session authorized for the user (cached after 1st run)."""
@@ -196,9 +214,13 @@ def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
                 "Failed to find required key in oath json file. This should never happen, trying to generate a new one..."
             )
         except PermissionError:
-            logger.warning("Failed to read stored token file: permission denied. Attempting to generate a new one...")
+            logger.warning(
+                "Failed to read stored token file: permission denied. Attempting to generate a new one..."
+            )
         except OSError as e:
-            logger.warning(f"Failed to read stored token file: {e}. Attempting to generate a new one...")
+            logger.warning(
+                f"Failed to read stored token file: {e}. Attempting to generate a new one..."
+            )
 
     return request_new_oath_token(api_key, api_secret)
 
@@ -226,18 +248,24 @@ class FlickrAPI:
                     time.sleep(wait)
                 self._last = time.time()
             try:
-                r = self.session.get(REST_URL, params=params, timeout=MAX_REQUEST_TIMEOUT)
+                r = self.session.get(
+                    REST_URL, params=params, timeout=MAX_REQUEST_TIMEOUT
+                )
                 if r.status_code < 500:
-                    last_err = RuntimeError(f"Permanent http error {r.status_code} encountered when requesting \"{r.url}\"")
+                    last_err = RuntimeError(
+                        f'Permanent http error {r.status_code} encountered when requesting "{r.url}"'
+                    )
                 r.raise_for_status()
                 data = r.json()
                 if data.get("stat") == "ok":
                     return data
                 last_err = RuntimeError(
-                    f"{method}: {data.get("message")} ({data.get("code")})"
+                    f"{method}: {data.get('message')} ({data.get('code')})"
                 )
                 if data.get("code") in FINAL_ERRORS:
-                    last_err = FlickrAPIError(f"{method}: {data.get("message")}", data.get("code"))
+                    last_err = FlickrAPIError(
+                        f"{method}: {data.get('message')}", data.get("code")
+                    )
                     break  # not retryable
             except Exception as e:
                 last_err = e
@@ -275,7 +303,7 @@ def best_url(photo):
 def make_filename(photo, ext: str):
     """Make a filename from the photo object from flickr"""
     title = sanitize(photo.get("title", ""), fallback="")
-    base = f"{title}_{photo["id"]}" if title else photo["id"]
+    base = f"{title}_{photo['id']}" if title else photo["id"]
     return f"{base}.{ext}"
 
 
@@ -287,10 +315,10 @@ def parse_date(photo: Photo):
             .timestamp()
         )
     except KeyError:
-        logger.error("Parsing date: missing key \"datetaken\" in dict")
+        logger.error('Parsing date: missing key "datetaken" in dict')
         return None
     except ValueError:
-        logger.error(f"Parsing date: could not parse date from {photo["datetaken"]}")
+        logger.error(f"Parsing date: could not parse date from {photo['datetaken']}")
         return None
     except OSError:
         logger.error("Parsing date: operating system error occurred")
@@ -338,7 +366,7 @@ def resolve_media(api: FlickrAPI, photo: Photo):
 
 def download_file(sess: Session, url: str, dest: Path, mtime: float | None):
     tmp = dest.with_name(dest.name + ".part")
-    last = RuntimeError(f"Unknown error downloading file \"{url}\"")
+    last = RuntimeError(f'Unknown error downloading file "{url}"')
     for attempt in range(5):
         try:
             with sess.get(url, stream=True, timeout=90) as r:
@@ -418,7 +446,9 @@ def main():
         "--dry-run", action="store_true", help="List what would be downloaded"
     )
     ap.add_argument(
-        "--log-location", default=LOGGING_FILE, help=f"File to log to (default: ./{LOGGING_FILE})"
+        "--log-location",
+        default=LOGGING_FILE,
+        help=f"File to log to (default: ./{LOGGING_FILE})",
     )
     args = ap.parse_args()
 
@@ -436,7 +466,7 @@ def main():
         logger.error(f"Creating output directory: lacking permissions to create {out}.")
         sys.exit(1)
     except OSError as e:
-        logger.error(f"Creating output directory: \"{out}\": {e}")
+        logger.error(f'Creating output directory: "{out}": {e}')
         sys.exit(1)
 
     session = authenticate(args.key, args.secret)
@@ -453,7 +483,7 @@ def main():
         else:
             raise
     user_id = me["id"]
-    logger.info(f"Logged in as {me["username"]["_content"]} ({user_id})")
+    logger.info(f"Logged in as {me['username']['_content']} ({user_id})")
 
     # ---- Collect albums --------------------------------------------------
     albums = []
@@ -492,7 +522,9 @@ def main():
         try:
             folder.mkdir(exist_ok=True)
         except PermissionError:
-            logger.error(f"Failed to create album directory: permission error for {folder}")
+            logger.error(
+                f"Failed to create album directory: permission error for {folder}"
+            )
         except OSError as e:
             logger.error(f"Failed to create album directory: {e}")
         else:
@@ -523,12 +555,16 @@ def main():
         try:
             folder.mkdir(exist_ok=True)
         except PermissionError:
-            logger.error(f"Creating albumless photo directory: lacking permissions for {folder}")
+            logger.error(
+                f"Creating albumless photo directory: lacking permissions for {folder}"
+            )
         except OSError as e:
             logger.error(f"Creating albumless photo directory: {e}")
         else:
             n = 0
-            for photo in api.paginate("flickr.photos.getNotInSet", "photos", extras=EXTRAS):
+            for photo in api.paginate(
+                "flickr.photos.getNotInSet", "photos", extras=EXTRAS
+            ):
                 add_to_plan(photo, folder)
                 n += 1
             logger.info(f"{UNSORTED_NAME}: {n} items")
@@ -543,7 +579,7 @@ def main():
         for e in plan.values():
             p = e["photo"]
             logger.info(
-                f"  {p["id"]}  {p.get("title", "")!r} -> {[d.name for d in e["dests"]]}"
+                f"  {p['id']}  {p.get('title', '')!r} -> {[d.name for d in e['dests']]}"
             )
         return
 
@@ -557,7 +593,9 @@ def main():
             try:
                 parts_file.unlink()
             except PermissionError:
-                logger.error(f"Failed to remove parts file {parts_file}: Permission denied")
+                logger.error(
+                    f"Failed to remove parts file {parts_file}: Permission denied"
+                )
             except OSError as e:
                 logger.error(f"Failed to remove parts file {parts_file}: {e}")
 
@@ -585,10 +623,10 @@ def main():
             try:
                 fut.result()
                 if done["n"] % 25 == 0 or done["n"] == total:
-                    logger.info(f"  {done["n"]}/{total} done")
+                    logger.info(f"  {done['n']}/{total} done")
             except Exception as e:
                 failures.append((photo["id"], photo.get("title", ""), str(e)))
-                logger.error(f"  FAILED {photo["id"]} {photo.get("title", "")!r}: {e}")
+                logger.error(f"  FAILED {photo['id']} {photo.get('title', '')!r}: {e}")
 
     if failures:
         with open(out / "_failed.txt", "w", encoding="utf-8") as f:
