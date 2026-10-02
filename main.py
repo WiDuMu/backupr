@@ -394,7 +394,7 @@ def link_or_copy(src: Path, dst: Path, mode: str):
             os.link(src, dst)
             return
         except OSError:
-            pass
+            logger.warning(f"Failed to hardlink {src} to {dst}, attempting a copy instead")
     shutil.copy2(src, dst)
 
 
