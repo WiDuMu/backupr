@@ -74,6 +74,12 @@ def authenticate(api_key: str, api_secret: str):
                     resource_owner_key=data["oauth_token"],
                     resource_owner_secret=data["oauth_token_secret"],
                 )
+        except json.JSONDecoder:
+            logger.error(f"Failed to parse the oath token json file, trying to generate a new one at \"{TOKEN_FILE}\".")
+        except KeyError:
+            logger.error("Failed to find required key in oath json file. This should never happen, trying to generate a new one at \"{TOKEN_FILE}\".")
+
+
         except Exception:
             logger.error(f"Failed to load the oath token file, trying to generate a new one at \"{TOKEN_FILE}\".")
 
@@ -105,6 +111,7 @@ def authenticate(api_key: str, api_secret: str):
         os.chmod(TOKEN_FILE, 0o600)
     except OSError:
         logger.error(f"Failed to set the token file permissions correctly at location {TOKEN_FILE}")
+        sys.exit(f"Exiting due to unsafe credentials exposed at {TOKEN_FILE}")
     return oauth
 
 
@@ -279,8 +286,8 @@ def main():
 
     ap = argparse.ArgumentParser(description="Download Flickr photos into album folders.")
     ap.add_argument("output", help="Destination folder")
-    ap.add_argument("--key", default=os.getenv("FLICKR_API_KEY"), help="Flickr API key")
-    ap.add_argument("--secret", default=os.getenv("FLICKR_API_SECRET"), help="Flickr API secret")
+    ap.add_argument("--key", default=os.getenv("FLICKR_API_KEY"), help="Flickr API key. This option should in general not be used to avoid exposing the key.")
+    ap.add_argument("--secret", default=os.getenv("FLICKR_API_SECRET"), help="Flickr API secret. This option should in general not be used to avoid exposing the secret.")
     ap.add_argument("--workers", type=int, default=4, help="Parallel downloads (default 4)")
     ap.add_argument("--skip-unsorted", action="store_true", help="Skip photos not in any album")
     ap.add_argument(
