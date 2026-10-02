@@ -266,10 +266,13 @@ class FlickrAPI:
                 r = self.session.get(
                     REST_URL, params=params, timeout=MAX_REQUEST_TIMEOUT
                 )
-                if r.status_code == 429 and attempt < MAX_ATTEMPTS:
-                    last_err = FlickrAPIError("Rate limit exceeded", r.status_code)
-                    self.wait_retry_after(r)
-                    continue
+                if r.status_code == 429:
+                    if attempt < MAX_ATTEMPTS:
+                        self.wait_retry_after(r)
+                        continue
+                    else:
+                        last_err = FlickrAPIError("Rate limit exceeded", r.status_code)
+                        break
                 elif r.status_code < 500:
                     last_err = RuntimeError(
                         f'Permanent http error {r.status_code} encountered when requesting "{r.url}"'
