@@ -2,6 +2,8 @@
 """
 Flickr Album Downloader
 =======================
+Minimum Python version: 3.12
+
 Downloads every photo/video in your Flickr account (original quality where
 available) into one folder per album, mirroring how you organized them.
 
