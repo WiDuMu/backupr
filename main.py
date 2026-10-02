@@ -110,7 +110,7 @@ class FlickrAPIError(RuntimeError):
         super().__init__(message)
         self.code = code
 
-class Photo(TypedDict):
+class Photo(TypedDict, total=False):
     datetaken: str
     datetakengranularity: int
     datetakenunknown: int | str
