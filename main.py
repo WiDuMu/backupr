@@ -265,7 +265,7 @@ class FlickrAPI:
                     REST_URL, params=params, timeout=MAX_REQUEST_TIMEOUT
                 )
                 if r.status_code == 429 and attempt < MAX_ATTEMPTS:
-                    last_err = FlickrError("Rate limit exceeded", r.status_code)
+                    last_err = FlickrAPIError("Rate limit exceeded", r.status_code)
                     self.wait_retry_after(r)
                     continue
                 elif r.status_code < 500:
