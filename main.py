@@ -559,13 +559,13 @@ def main():
                     logger.info(f"  {done["n"]}/{total} done")
             except Exception as e:
                 failures.append((photo["id"], photo.get("title", ""), str(e)))
-                logger.info(f"  FAILED {photo["id"]} {photo.get("title", "")!r}: {e}")
+                logger.error(f"  FAILED {photo["id"]} {photo.get("title", "")!r}: {e}")
 
     if failures:
         with open(out / "_failed.txt", "w", encoding="utf-8") as f:
             for pid, title, err in failures:
                 f.write(f"{pid}\t{title}\t{err}\n")
-        logger.info(
+        logger.error(
             f"\nFinished with {len(failures)} failures (see _failed.txt). Re-run to retry them."
         )
     else:
