@@ -514,7 +514,7 @@ def main():
 
     def add_to_plan(photo: Photo, folder: Path):
         entry = plan.setdefault(photo["id"], {"photo": photo, "dests": []})
-        if folder not in [d.parent for d in entry["dests"]]:
+        if folder not in entry["dests"]:
             entry["dests"].append(folder)  # store folder; filename decided later
 
     for i, album in enumerate(albums, 1):
