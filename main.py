@@ -26,6 +26,7 @@ Setup
 
 import argparse
 import json
+import getpass
 import os
 import re
 import shutil
@@ -56,9 +57,6 @@ UNSORTED_NAME = "_Not in any album"
 CHUNK_SIZE = 1 << 16
 LOGGING_FILE = "flickr_backup.log"
 
-print_lock = threading.Lock()
-
-
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------
@@ -84,7 +82,7 @@ def authenticate(api_key: str, api_secret: str):
     url = oauth.authorization_url(AUTHORIZE_URL, perms="read")
     print("\nOpen this URL in your browser and authorize access:\n")
     print(f"  {url}\n")
-    verifier = input("Paste the verifier code (9 digits) here: ").strip()
+    verifier = getpass.getpass("Paste the verifier code (9 digits) here: ").strip()
 
     oauth = OAuth1Session(
         api_key,
