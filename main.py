@@ -454,7 +454,7 @@ def main():
     args = ap.parse_args()
 
     setup_logging(args.log_location)
-    logger.debug(f"{datetime.now(datetime.now().astimezone().tzinfo)} new session")
+    logger.debug(f"{datetime.now().astimezone()} new session")
 
     if not args.key or not args.secret:
         sys.exit("Provide --key/--secret or set FLICKR_API_KEY / FLICKR_API_SECRET.")
