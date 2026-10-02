@@ -41,6 +41,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
+from typing import List, NotRequired, TypedDict
 from urllib.parse import urlparse
 
 import requests
@@ -63,6 +64,35 @@ LOGGING_FILE = "flickr_backup.log"
 
 logger = logging.getLogger(__name__)
 
+# --------------------------------------------------------------------------
+# Flickr Response types
+# --------------------------------------------------------------------------
+
+
+class Photo(TypedDict):
+    datetaken: str
+    datetakengranularity: int
+    datetakenunknown: int | str
+    farm: int
+    height_c: int
+    height_z: int
+    id: str
+    isfamily: int
+    isprimary: str
+    ispublic: int
+    media: str
+    media_status: str
+    originalformat: str
+    originalsecret: str
+    secret: str
+    server: str
+    title: str
+    upgrade_sizes: list[str]
+    url_c: str
+    url_z: str
+    width_c: int
+    width_z: int
+
 
 # --------------------------------------------------------------------------
 # Auth + API
@@ -79,7 +109,7 @@ def authenticate(api_key: str, api_secret: str):
                     resource_owner_key=data["oauth_token"],
                     resource_owner_secret=data["oauth_token_secret"],
                 )
-        except json.JSONDecoder:
+        except json.JSONDecodeError:
             logger.error(
                 f'Failed to parse the oath token json file, trying to generate a new one at "{TOKEN_FILE}".'
             )
