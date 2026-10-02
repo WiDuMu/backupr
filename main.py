@@ -142,12 +142,14 @@ def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
         try:
             data = json.loads(TOKEN_FILE.read_text())
             if data.get("api_key") == api_key:
-                return OAuth1Session(
+                session = OAuth1Session(
                     api_key,
                     client_secret=api_secret,
                     resource_owner_key=data["oauth_token"],
                     resource_owner_secret=data["oauth_token_secret"],
                 )
+                if FlickrAPI(session).validate():
+                    return session
         except json.JSONDecodeError:
             logger.error(
                 f'Failed to parse the oath token json file, trying to generate a new one at "{TOKEN_FILE}".'
@@ -156,7 +158,8 @@ def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
             logger.error(
                 'Failed to find required key in oath json file. This should never happen, trying to generate a new one at "{TOKEN_FILE}".'
             )
-
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to validate stored key: {e}")
         except Exception:
             logger.error(
                 f'Failed to load the oath token file, trying to generate a new one at "{TOKEN_FILE}".'
@@ -215,11 +218,8 @@ class FlickrAPI:
 
     def validate(self):
         """Check if oath token is still valid"""
-        try:
-            result = self.call("flickr.auth.oauth.checkToken")
-            return result.get("stat") == "ok"
-        except Exception:
-            return False
+        result = self.call("flickr.auth.oauth.checkToken")
+        return result.get("stat") == "ok"
 
 
 # --------------------------------------------------------------------------
@@ -305,7 +305,7 @@ def resolve_media(api: FlickrAPI, photo: Photo):
 
 def download_file(sess: Session, url: str | bytes, dest: Path, mtime: float | None):
     tmp = dest.with_name(dest.name + ".part")
-    last = RuntimeError(f"Unknown error downloading file {url}")
+    last = RuntimeError(f"Unknown error downloading file \"{url}\"")
     for attempt in range(5):
         try:
             with sess.get(url, stream=True, timeout=90) as r:
@@ -405,10 +405,6 @@ def main():
 
     session = authenticate(args.key, args.secret)
     api = FlickrAPI(session)
-
-    if not api.validate():
-        session = request_new_oath_token(args.key, args.secret)
-        api = FlickrAPI(session)
 
     me = api.call("flickr.test.login")["user"]
     user_id = me["id"]
