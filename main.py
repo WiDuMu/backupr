@@ -40,6 +40,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import TypedDict
 from urllib.parse import urlparse
@@ -63,6 +64,32 @@ CHUNK_SIZE = 1 << 16
 LOGGING_FILE = "flickr_backup.log"
 
 logger = logging.getLogger(__name__)
+
+# --------------------------------------------------------------------------
+# Flickr Error Codes
+# --------------------------------------------------------------------------
+
+class FlickrError(Enum):
+    """Flickr API error codes I'm aware of.
+
+    AFAIK Flickr doesn't have a convienient reference of error codes, so for a comprehensive set one would have to go method by method in the documentation.
+    """
+    NOT_FOUND = 1
+    MISSING_ARGUMENT = 2
+    SSL_IS_REQUIRED = 95
+    INVALID_SIGNATURE = 96
+    MISSING_SIGNATURE = 97
+    LOGIN_FAILED = 98
+    NOT_LOGGED_IN_OR_INSUFFICIENT_PERMISSIONS = 99
+    INVALID_API_KEY = 100
+    SERVICE_UNAVAILABLE = 105
+    WRITE_FAILED = 106
+    FORMAT_NOT_FOUND = 111
+    METHOD_NOT_FOUND = 112
+    INVALID_SOAP_ENVELOPE = 114
+    INVALID_XML_RPC_CALL = 115
+    BAD_URL = 116
+    RATE_LIMIT_EXCEEDED = 429
 
 # --------------------------------------------------------------------------
 # Flickr Response types
@@ -405,7 +432,7 @@ def main():
     try:
         me = api.call("flickr.test.login")["user"]
     except FlickrAPIError as e:
-        if e.code == 98:
+        if e.code == FlickrError.LOGIN_FAILED:
             logger.info("Failed to login with stored token, requesting another")
             session = request_new_oath_token(args.key, args.secret)
             api = FlickrAPI(session)
