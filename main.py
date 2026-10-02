@@ -70,6 +70,9 @@ LOGGING_FILE = "flickr_backup.log"
 
 logger = logging.getLogger(__name__)
 
+# Thread local storage
+thread_local = threading.local()
+
 # --------------------------------------------------------------------------
 # Flickr Error Codes
 # --------------------------------------------------------------------------
@@ -223,7 +226,7 @@ def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
             logger.warning(
                 f"Failed to read stored token file: {e}. Attempting to generate a new one..."
             )
-        except UnicodeEncodeError:
+        except UnicodeDecodeError:
             logger.warning("Stored token file is not valid unicode. Attempting to generate a new one...")
 
     return request_new_oath_token(api_key, api_secret)
@@ -382,9 +385,10 @@ def resolve_media(api: FlickrAPI, photo: Photo):
     return url, ext, False
 
 
-def download_file(sess: Session, url: str, dest: Path, mtime: float | None):
+def download_file(login_session: Session | None, url: str, dest: Path, mtime: float | None):
     tmp = dest.with_name(dest.name + ".part")
     last = RuntimeError(f'Unknown error downloading file "{url}"')
+    sess = login_session if login_session is not None else thread_get_session()
     for attempt in range(MAX_ATTEMPTS + 1):
         try:
             with sess.get(url, stream=True, timeout=90) as r:
@@ -415,6 +419,11 @@ def link_or_copy(src: Path, dst: Path, mode: str):
             logger.warning(f"Failed to hardlink {src} to {dst}, attempting a copy instead")
     shutil.copy2(src, dst)
 
+def thread_get_session():
+    # Check if this specific thread already has its own session
+    if not hasattr(thread_local, "session"):
+        thread_local.session = requests.Session()
+    return thread_local.session
 
 # --------------------------------------------------------------------------
 # Logging setup
@@ -618,7 +627,7 @@ def main():
                 )
             except OSError as e:
                 logger.error(f"Failed to remove parts file {parts_file}: {e}")
-    plain = requests.Session()
+
     done = {"n": 0}
     failures = []
 
@@ -629,7 +638,7 @@ def main():
         filename = make_filename(photo, ext)
         primary = folders[0] / filename
         if not (primary.exists() and primary.stat().st_size > 0):
-            download_file(session if signed else plain, url, primary, parse_date(photo))
+            download_file(session if signed else None, url, primary, parse_date(photo))
         for extra in folders[1:]:
             link_or_copy(primary, extra / filename, args.duplicates)
         return photo
