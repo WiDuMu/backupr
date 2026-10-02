@@ -22,6 +22,10 @@ Setup
    The first run opens an authorization URL; approve it and paste the
    verifier code back. The token is cached in ~/.flickr_album_downloader.json
    (read-only permission).
+
+   DO NOT commit this file to version control.
+   If it does get published or commited, visit https://www.flickr.com/services/auth/list.gne
+   immediately to revoke the token.
 """
 
 import argparse
