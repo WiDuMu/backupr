@@ -591,6 +591,7 @@ def main():
     # This may be possible but has verification requirements
     for parts_file in out.rglob(".parts"):
         if parts_file.is_file():
+            logger.debug(f"Removing parts file {parts_file}")
             try:
                 parts_file.unlink()
             except PermissionError:
