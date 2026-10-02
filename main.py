@@ -239,6 +239,15 @@ class FlickrAPI:
         self._lock = threading.Lock()
         self._last = 0.0
 
+    def wait_retry_after(self, req: requests.Response):
+        retry_after_header = req.headers.get("Retry-After", MAX_REQUEST_TIMEOUT)
+        try:
+            retry_after = int(retry_after_header)
+        except ValueError:
+            retry_after = 60
+        logger.warning(f"Rate limit exceeded, waiting {retry_after} seconds")
+        time.sleep(retry_after)
+
     def call(self, method: str, **params):
         """Call the given flickr api method with the specified parameters, will retry on failure."""
         params.update({"method": method, "format": "json", "nojsoncallback": 1})
@@ -253,7 +262,9 @@ class FlickrAPI:
                 r = self.session.get(
                     REST_URL, params=params, timeout=MAX_REQUEST_TIMEOUT
                 )
-                if r.status_code < 500:
+                if r.status_code == 429:
+                    self.wait_retry_after(r)
+                elif r.status_code < 500:
                     last_err = RuntimeError(
                         f'Permanent http error {r.status_code} encountered when requesting "{r.url}"'
                     )
@@ -264,11 +275,14 @@ class FlickrAPI:
                 last_err = RuntimeError(
                     f"{method}: {data.get('message')} ({data.get('code')})"
                 )
-                if data.get("code") in FINAL_ERRORS:
+                code = data.get("code")
+                if code in FINAL_ERRORS:
                     last_err = FlickrAPIError(
-                        f"{method}: {data.get('message')}", data.get("code")
+                        f"{method}: {data.get('message')}", code
                     )
                     break  # not retryable
+                if code == FlickrError.RATE_LIMIT_EXCEEDED:
+                    self.wait_retry_after(r)
             except Exception as e:
                 last_err = e
             if attempt > MAX_ATTEMPTS - 1:
