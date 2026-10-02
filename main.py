@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 # --------------------------------------------------------------------------
 # Auth + API
 # --------------------------------------------------------------------------
-def authenticate(api_key, api_secret):
+def authenticate(api_key: str, api_secret: str):
     """Return an OAuth1Session authorized for the user (cached after 1st run)."""
     if TOKEN_FILE.exists():
         try:
@@ -106,20 +106,27 @@ def authenticate(api_key, api_secret):
     try:
         os.chmod(TOKEN_FILE, 0o600)
     except OSError:
-        logger.error(f"[WARNING]: Failed to set the token file permissions correctly at location {TOKEN_FILE}")
+        logger.error(f"Failed to set the token file permissions correctly at location {TOKEN_FILE}")
     return oauth
 
 
 class FlickrAPI:
-    def __init__(self, session, min_interval=0.25):
+    """Holds a Flickr API Oath Session and manages interval between api calls"""
+
+    def __init__(self, session: OAuth1Session, min_interval: float = 0.25):
+        """
+        Create a new FlickrAPI session using an OAuth session and minimum call interval
+        """
         self.session = session
         self.min_interval = min_interval
         self._lock = threading.Lock()
         self._last = 0.0
 
-    def call(self, method, **params):
+    def call(self, method: str, **params):
+        """ Call the given flickr api method with the specified parameters, will retry on failure.
+        """
         params.update({"method": method, "format": "json", "nojsoncallback": 1})
-        last_err = None
+        last_err = RuntimeError("Unknown API call error occurred")
         for attempt in range(6):
             with self._lock:  # gentle throttle (Flickr allows 3600 calls/hour)
                 wait = self.min_interval - (time.time() - self._last)
@@ -155,7 +162,9 @@ class FlickrAPI:
 # --------------------------------------------------------------------------
 # Helpers
 # --------------------------------------------------------------------------
-def sanitize(name, fallback="untitled", max_len=80):
+def sanitize(name: str, fallback: str = "untitled", max_len: int = 80):
+    """ Sanitize a filename of disallowed characters
+    """
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name or "").strip(" .")
     return (name[:max_len].strip(" .")) or fallback
 
@@ -167,17 +176,30 @@ def best_url(photo):
     return None
 
 
-def make_filename(photo, ext):
+def make_filename(photo, ext: str):
+    """ Make a filename from the photo object from flickr
+    """
     title = sanitize(photo.get("title", ""), fallback="")
     base = f"{title}_{photo['id']}" if title else photo["id"]
     return f"{base}.{ext}"
 
 
-def parse_date(photo):
+def parse_date(photo: dict[str, str]):
     try:
-        return datetime.strptime(photo["datetaken"], "%Y-%m-%d %H:%M:%S").timestamp()
-    except Exception:
+        return datetime.strptime(photo["datetaken"], "%Y-%m-%d %H:%M:%S").astimezone().timestamp()
+    except KeyError:
+        logger.error("Parsing date: missing key 'datetaken' in dict")
         return None
+    except ValueError:
+        logger.error(f"Parsing date: could not parse date from {photo["datetaken"]}")
+        return None
+    except OSError:
+        logger.error("Parsing date: operating system error occurred")
+        return None
+    except OverflowError:
+        logger.error("Parsing date: overflow error occurred")
+        return None
+    return None
 
 
 def resolve_media(api, photo):
@@ -205,9 +227,9 @@ def resolve_media(api, photo):
     return url, ext, False
 
 
-def download_file(sess: Session, url, dest: Path, mtime):
+def download_file(sess: Session, url: str | bytes, dest: Path, mtime: int | float):
     tmp = dest.with_name(dest.name + ".part")
-    last = None
+    last = RuntimeError(f"Unknown error downloading file {url}")
     for attempt in range(5):
         try:
             with sess.get(url, stream=True, timeout=90) as r:
