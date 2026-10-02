@@ -101,7 +101,6 @@ class FlickrError(IntEnum):
     INVALID_SOAP_ENVELOPE = 114
     INVALID_XML_RPC_CALL = 115
     BAD_URL = 116
-    # RATE_LIMIT_EXCEEDED = 429
 
 
 # Errors that indicate that a request will not suceed even if they are retried
