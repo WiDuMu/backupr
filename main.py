@@ -29,6 +29,7 @@ Setup
 """
 
 import argparse
+import csv
 import getpass
 import json
 import logging
@@ -574,8 +575,9 @@ def main():
 
     if failures:
         with open(out / "_failed.txt", "w", encoding="utf-8") as f:
+            writer = csv.writer(f)
             for pid, title, err in failures:
-                f.write(f"{pid}\t{title}\t{err}\n")
+                writer.writerow([pid, title, err])
         logger.error(
             f"\nFinished with {len(failures)} failures (see _failed.txt). Re-run to retry them."
         )
