@@ -150,22 +150,19 @@ def request_new_oath_token(api_key: str, api_secret: str) -> OAuth1Session:
         verifier=verifier,
     )
     tok = oauth.fetch_access_token(ACCESS_TOKEN_URL)
-    TOKEN_FILE.write_text(
-        json.dumps(
-            {
+
+    try:
+        # Open the file with the right permissions from the start
+        file = os.open(TOKEN_FILE, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(file, "w") as f:
+            f.write(json.dumps({
                 "api_key": api_key,
                 "oauth_token": tok["oauth_token"],
                 "oauth_token_secret": tok["oauth_token_secret"],
-            }
-        )
-    )
-    try:
-        os.chmod(TOKEN_FILE, 0o600)
-    except OSError:
-        logger.error(
-            f"Failed to set the token file permissions correctly at location {TOKEN_FILE}"
-        )
-        sys.exit(f"Exiting due to unsafe credentials exposed at {TOKEN_FILE}")
+            }))
+    except OSError as e:
+        logger.warning(f"Failed to save token file at \"{TOKEN_FILE}\".")
+        logger.warning("Will need to reauthenticate next run!")
     return oauth
 
 def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
