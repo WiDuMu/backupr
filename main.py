@@ -589,7 +589,7 @@ def main():
     # Remove .parts files
     # TODO: reuse the parts files?
     # This may be possible but has verification requirements
-    for parts_file in out.rglob(".parts"):
+    for parts_file in out.rglob(".part"):
         if parts_file.is_file():
             logger.debug(f"Removing parts file {parts_file}")
             try:
