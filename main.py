@@ -42,7 +42,6 @@ import shutil
 import sys
 import threading
 import time
-from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from enum import IntEnum
@@ -53,6 +52,7 @@ from urllib.parse import urlparse
 import requests
 from requests.sessions import Session
 from requests_oauthlib import OAuth1Session
+from tqdm import tqdm
 
 REST_URL = "https://api.flickr.com/services/rest/"
 REQUEST_TOKEN_URL = "https://www.flickr.com/services/oauth/request_token"
@@ -229,7 +229,9 @@ def authenticate(api_key: str, api_secret: str) -> OAuth1Session:
                 f"Failed to read stored token file: {e}. Attempting to generate a new one..."
             )
         except UnicodeDecodeError:
-            logger.warning("Stored token file is not valid unicode. Attempting to generate a new one...")
+            logger.warning(
+                "Stored token file is not valid unicode. Attempting to generate a new one..."
+            )
 
     return request_new_oauth_token(api_key, api_secret)
 
@@ -289,9 +291,7 @@ class FlickrAPI:
                 )
                 code = data.get("code")
                 if int(code) in FINAL_ERRORS:
-                    last_err = FlickrAPIError(
-                        f"{method}: {data.get('message')}", code
-                    )
+                    last_err = FlickrAPIError(f"{method}: {data.get('message')}", code)
                     break  # not retryable
             except Exception as e:
                 last_err = e
@@ -390,7 +390,9 @@ def resolve_media(api: FlickrAPI, photo: Photo):
     return url, ext, False
 
 
-def download_file(login_session: Session | None, url: str, dest: Path, mtime: float | None):
+def download_file(
+    login_session: Session | None, url: str, dest: Path, mtime: float | None
+):
     tmp = dest.with_name(dest.name + ".part")
     last = RuntimeError(f'Unknown error downloading file "{url}"')
     sess = login_session if login_session is not None else thread_get_session()
@@ -406,7 +408,7 @@ def download_file(login_session: Session | None, url: str, dest: Path, mtime: fl
             return
         except Exception as e:
             last = e
-            if attempt < MAX_ATTEMPTS: # Don't sleep after a final error.
+            if attempt < MAX_ATTEMPTS:  # Don't sleep after a final error.
                 time.sleep(2**attempt)
     if tmp.exists():
         tmp.unlink()
@@ -421,8 +423,11 @@ def link_or_copy(src: Path, dst: Path, mode: str):
             os.link(src, dst)
             return
         except OSError:
-            logger.warning(f"Failed to hardlink {src} to {dst}, attempting a copy instead")
+            logger.warning(
+                f"Failed to hardlink {src} to {dst}, attempting a copy instead"
+            )
     shutil.copy2(src, dst)
+
 
 def thread_get_session():
     # Check if this specific thread already has its own session
@@ -430,13 +435,16 @@ def thread_get_session():
         thread_local.session = requests.Session()
     return thread_local.session
 
+
 # --------------------------------------------------------------------------
 # Logging setup
 # --------------------------------------------------------------------------
 
 
 def setup_logging(file_location: str | Path):
-    file_handler = logging.handlers.RotatingFileHandler(file_location, maxBytes=MAX_LOG_SIZE)
+    file_handler = logging.handlers.RotatingFileHandler(
+        file_location, maxBytes=MAX_LOG_SIZE
+    )
     file_handler.setLevel(logging.DEBUG)
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setLevel(logging.INFO)
@@ -650,7 +658,9 @@ def main():
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = {pool.submit(work, e): e for e in plan.values()}
-        for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading images"):
+        for fut in tqdm(
+            as_completed(futures), total=len(futures), desc="Downloading images"
+        ):
             photo = futures[fut]["photo"]
             done["n"] += 1
             try:
