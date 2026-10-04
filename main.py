@@ -42,6 +42,7 @@ import shutil
 import sys
 import threading
 import time
+from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from enum import IntEnum
@@ -649,7 +650,7 @@ def main():
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         futures = {pool.submit(work, e): e for e in plan.values()}
-        for fut in as_completed(futures):
+        for fut in tqdm(as_completed(futures), total=len(futures), desc="Downloading images"):
             photo = futures[fut]["photo"]
             done["n"] += 1
             try:

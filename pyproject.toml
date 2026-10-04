@@ -7,4 +7,5 @@ requires-python = ">=3.14"
 dependencies = [
     "requests>=2.34.2",
     "requests-oauthlib>=2.0.0",
+    "tqdm>=4.70.1",
 ]
