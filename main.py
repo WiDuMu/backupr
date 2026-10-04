@@ -318,21 +318,21 @@ def sanitize(name: str, fallback: str = "untitled", max_len: int = 80):
     return (name[:max_len].strip(" .")) or fallback
 
 
-def best_url(photo):
+def best_url(photo) -> str | None:
     for key in SIZE_KEYS:
         if photo.get(key):
             return photo[key]
     return None
 
 
-def make_filename(photo, ext: str):
+def make_filename(photo: Photo, ext: str) -> str:
     """Make a filename from the photo object from flickr"""
     title = sanitize(photo.get("title", ""), fallback="")
     base = f"{title}_{photo['id']}" if title else photo["id"]
     return f"{base}.{ext}"
 
 
-def parse_date(photo: Photo):
+def parse_date(photo: Photo) -> float | None:
     try:
         return (
             datetime.strptime(photo["datetaken"], "%Y-%m-%d %H:%M:%S")
