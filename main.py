@@ -549,7 +549,7 @@ def main():
         if folder not in entry["dests"]:
             entry["dests"].append(folder)  # store folder; filename decided later
 
-    for i, album in enumerate(albums, 1):
+    for i, album in tqdm(enumerate(albums, 1), "Discovering album consitutents"):
         title = album["title"]["_content"]
         folder = album_dir(title, album["id"])
         try:
