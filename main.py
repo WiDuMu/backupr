@@ -35,6 +35,7 @@ import csv
 import getpass
 import json
 import logging
+import logging.handlers
 import os
 import re
 import shutil
@@ -64,6 +65,7 @@ EXTRAS = ",".join(SIZE_KEYS + ["original_format", "media", "date_taken"])
 UNSORTED_NAME = "_Not in any album"
 
 MAX_ATTEMPTS = 5
+MAX_LOG_SIZE = 10 * (1 << 20)
 MAX_REQUEST_TIMEOUT = 60
 CHUNK_SIZE = 1 << 16
 LOGGING_FILE = "flickr_backup.log"
@@ -433,7 +435,7 @@ def thread_get_session():
 
 
 def setup_logging(file_location: str | Path):
-    file_handler = logging.FileHandler(file_location)
+    file_handler = logging.handlers.RotatingFileHandler(file_location, maxBytes=MAX_LOG_SIZE)
     file_handler.setLevel(logging.DEBUG)
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setLevel(logging.INFO)
