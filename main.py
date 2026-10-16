@@ -69,7 +69,7 @@ UNSORTED_NAME = "_Not in any album"
 MAX_ATTEMPTS = 5
 MAX_LOG_SIZE = 10 * (1 << 20)
 MAX_REQUEST_TIMEOUT = 60
-CHUNK_SIZE = 1 << 16
+CHUNK_SIZE = 1 << 20
 LOGGING_FILE = "flickr_backup.log"
 
 logger = logging.getLogger(__name__)
@@ -411,6 +411,7 @@ def download_file(
                 os.utime(dest, (mtime, mtime))
             return
         except Exception as e:
+            logger.debug(f"Downloading file '{url}': {e}")
             last = e
             if attempt < MAX_ATTEMPTS:  # Don't sleep after a final error.
                 time.sleep(2**attempt)
@@ -660,20 +661,23 @@ def main():
             link_or_copy(primary, extra / filename, args.duplicates)
         return photo
 
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(work, e): e for e in plan.values()}
-        for fut in tqdm(
-            as_completed(futures), total=len(futures), desc="Downloading images"
-        ):
-            photo = futures[fut]["photo"]
-            done["n"] += 1
-            try:
-                fut.result()
-                if done["n"] % 25 == 0 or done["n"] == total:
-                    logger.info(f"  {done['n']}/{total} done")
-            except Exception as e:
-                failures.append((photo["id"], photo.get("title", ""), str(e)))
-                logger.error(f"  FAILED DOWNLOADING {photo['id']} {photo.get('title', '')!r}: {e}")
+    try:
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            futures = {pool.submit(work, e): e for e in plan.values()}
+            for fut in tqdm(
+                as_completed(futures), total=len(futures), desc="Downloading images"
+            ):
+                photo = futures[fut]["photo"]
+                done["n"] += 1
+                try:
+                    fut.result()
+                    if done["n"] % 25 == 0 or done["n"] == total:
+                        logger.info(f"  {done['n']}/{total} done")
+                except Exception as e:
+                    failures.append((photo["id"], photo.get("title", ""), str(e)))
+                    logger.error(f"  FAILED DOWNLOADING {photo['id']} {photo.get('title', '')!r}: {e}")
+    except KeyboardInterrupt as e:
+        logger.info("Keyboard interrupted: exiting and writing logs.")
 
     if failures:
         with open(out / "_failed.txt", "w", encoding="utf-8") as f:
@@ -683,6 +687,7 @@ def main():
         logger.error(
             f"\nFinished with {len(failures)} failures (see _failed.txt). Re-run to retry them."
         )
+        sys.exit(1)
     else:
         logger.info("\nAll done. 🎉")
 
