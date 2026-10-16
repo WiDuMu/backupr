@@ -410,6 +410,7 @@ def download_file(
     for attempt in range(MAX_ATTEMPTS + 1):
         try:
             with sess.get(url, headers=headers, stream=True, timeout=90) as r:
+                logger.debug(f"Request {url} status: {r.status_code}")
                 r.raise_for_status()
                 with open(tmp, "wb") as f:
                     f.writelines(r.iter_content(CHUNK_SIZE))
