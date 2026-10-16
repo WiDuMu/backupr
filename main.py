@@ -415,7 +415,7 @@ def download_file(
                 os.utime(dest, (mtime, mtime))
             return
         except Exception as e:
-            logger.debug(f"Downloading file '{url}': {e}")
+            logger.debug(f"Downloading file attempt {attempt} '{url}': {e}")
             last = e
             if attempt < MAX_ATTEMPTS:  # Don't sleep after a final error.
                 time.sleep(2**attempt)
