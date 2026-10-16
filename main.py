@@ -407,9 +407,10 @@ def download_file(
         "Accept-Language": "en-US,en;q=0.9",
         "Referer": "https://www.flickr.com/",
     }
+    sess.headers.update(headers)
     for attempt in range(MAX_ATTEMPTS + 1):
         try:
-            with sess.get(url, headers=headers, stream=True, timeout=90) as r:
+            with sess.get(url, stream=True, timeout=90) as r:
                 logger.debug(f"Request {url} status: {r.status_code}, {r.headers}")
                 r.raise_for_status()
                 with open(tmp, "wb") as f:
