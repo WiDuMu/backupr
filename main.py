@@ -660,7 +660,7 @@ def main():
         filename = make_filename(photo, ext)
         primary = folders[0] / filename
         if not (primary.exists() and primary.stat().st_size > 0):
-            download_file(session if signed else None, url, primary, parse_date(photo))
+            download_file(session, url, primary, parse_date(photo))
         for extra in folders[1:]:
             link_or_copy(primary, extra / filename, args.duplicates)
         return photo
