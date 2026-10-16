@@ -400,6 +400,10 @@ def download_file(
     tmp = dest.with_name(dest.name + ".part")
     last = RuntimeError(f'Unknown error downloading file "{url}"')
     sess = login_session if login_session is not None else thread_get_session()
+    sess.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+    })
     for attempt in range(MAX_ATTEMPTS + 1):
         try:
             with sess.get(url, stream=True, timeout=90) as r:
