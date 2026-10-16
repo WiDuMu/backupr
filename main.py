@@ -44,6 +44,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from dotenv import load_dotenv
 from enum import IntEnum
 from pathlib import Path
 from typing import NotRequired, TypedDict
@@ -72,6 +73,9 @@ CHUNK_SIZE = 1 << 16
 LOGGING_FILE = "flickr_backup.log"
 
 logger = logging.getLogger(__name__)
+
+
+load_dotenv()  # reads variables from a .env file and sets them in os.environ
 
 # Thread local storage
 thread_local = threading.local()
@@ -472,7 +476,7 @@ def main():
         help="Flickr API secret. This option should in general not be used to avoid exposing the secret.",
     )
     ap.add_argument(
-        "--workers", type=int, default=4, help="Parallel downloads (default 4)"
+        "--workers", type=int, default=1, help="Parallel downloads (default 1/disabled)"
     )
     ap.add_argument(
         "--skip-unsorted", action="store_true", help="Skip photos not in any album"
@@ -669,7 +673,7 @@ def main():
                     logger.info(f"  {done['n']}/{total} done")
             except Exception as e:
                 failures.append((photo["id"], photo.get("title", ""), str(e)))
-                logger.error(f"  FAILED {photo['id']} {photo.get('title', '')!r}: {e}")
+                logger.error(f"  FAILED DOWNLOADING {photo['id']} {photo.get('title', '')!r}: {e}")
 
     if failures:
         with open(out / "_failed.txt", "w", encoding="utf-8") as f:
